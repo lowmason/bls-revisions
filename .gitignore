@@ -9,6 +9,6 @@ wheels/
 # Virtual environments
 .venv
 
-data/
-
-data/
+data/ces/
+data/qcew/
+data/sae/
