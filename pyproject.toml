@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bls-revisions"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "bls-release-dates @ git+https://github.com/lowmason/bls_release_dates.git",
+    "beautifulsoup4>=4.14.3",
+    "fastexcel>=0.19.0",
+    "httpx[http2]>=0.28.1",
+    "jupyter>=1.1.1",
+    "openpyxl>=3.1.5",
+    "polars>=1.38.1",
+    "pyarrow>=23.0.1",
+]
+
+[project.scripts]
+bls-revisions-download = "bls_revisions.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
