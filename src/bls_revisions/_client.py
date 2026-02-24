@@ -1,4 +1,4 @@
-"""Shared HTTP client for BLS requests: HTTP/2 and polite headers with retry."""
+'''Shared HTTP client for BLS requests: HTTP/2 and polite headers with retry.'''
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ from typing import Optional
 
 import httpx
 
-USER_AGENT = "Mozilla/5.0 (compatible; bls-revisions/0.1.0)"
+USER_AGENT = 'Mozilla/5.0 (compatible; bls-revisions/0.2.0)'
 DEFAULT_HEADERS = {
-    "User-Agent": USER_AGENT,
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-us,en;q=0.5",
+    'User-Agent': USER_AGENT,
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-us,en;q=0.5',
 }
 DEFAULT_TIMEOUT = 60.0
 MAX_RETRIES = 6
@@ -23,7 +23,7 @@ def create_client(
     headers: Optional[dict[str, str]] = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> httpx.Client:
-    """Build an httpx client with HTTP/2 and BLS-friendly headers."""
+    '''Build an httpx client with HTTP/2 and BLS-friendly headers.'''
     merged = {**DEFAULT_HEADERS}
     if headers:
         merged.update(headers)
@@ -41,12 +41,12 @@ def get_with_retry(
     timeout: float = DEFAULT_TIMEOUT,
     max_retries: int = MAX_RETRIES,
 ) -> httpx.Response:
-    """GET with exponential backoff on 429 and transient 5xx."""
+    '''GET with exponential backoff on 429 and transient 5xx.'''
     for attempt in range(max_retries):
         r = client.get(url, timeout=timeout)
         if r.status_code == 429 or r.status_code >= 500:
             wait = min(2**attempt, 60)
-            print(f"    [{r.status_code}] retrying in {wait}s ...")
+            print(f'    [{r.status_code}] retrying in {wait}s ...')
             time.sleep(wait)
             continue
         r.raise_for_status()
