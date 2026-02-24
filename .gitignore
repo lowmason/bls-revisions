@@ -12,3 +12,6 @@ wheels/
 data/ces/
 data/qcew/
 data/sae/
+
+# MkDocs build output
+site/

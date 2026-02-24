@@ -1,4 +1,25 @@
-'''Download SAE revisions from ALFRED and process into a clean parquet file.'''
+'''Fetch SAE (State and Area Employment) revisions from the FRED/ALFRED API.
+
+For each state x industry combination the module:
+
+1. Queries ALFRED for available vintage dates of the series.
+2. Downloads the *wide-format* observations (``output_type=2``) where
+   each column is a vintage date.
+3. Extracts the **initial** (first non-null across vintages) and
+   **latest** (last non-null) employment level for every reference date.
+4. Splits the result into revision-0 (initial) and revision-1 (latest)
+   rows, joins vintage dates from ``vintage_dates.parquet``, and writes
+   ``data/sae_revisions.parquet``.
+
+The FRED API key must be supplied via the ``FRED_API_KEY`` environment
+variable.
+
+Attributes:
+    FRED_BASE: Base URL for the FRED REST API.
+    FIPS_TO_ABBREV: Mapping from two-digit FIPS codes to state abbreviations.
+    INDUSTRIES: Tuples of *(ces_8digit, code, name, level, nsa_suffix)* for
+        every tracked industry.
+'''
 
 from __future__ import annotations
 
@@ -76,6 +97,7 @@ INDUSTRIES = [
 # ---------------------------------------------------------------------------
 
 def _chunked(xs: List[str], n: int) -> Iterable[List[str]]:
+    '''Yield successive *n*-sized chunks from *xs*.'''
     for i in range(0, len(xs), n):
         yield xs[i : i + n]
 
@@ -104,6 +126,16 @@ def _request_with_retry(
 def get_vintage_dates(
     client: httpx.Client, series_id: str, api_key: str
 ) -> List[str]:
+    '''Return the list of vintage date strings for *series_id* from ALFRED.
+
+    Args:
+        client: An open ``httpx.Client``.
+        series_id: FRED/ALFRED series identifier.
+        api_key: FRED API key.
+
+    Returns:
+        List of ISO-format date strings (``"YYYY-MM-DD"``).
+    '''
     r = _request_with_retry(
         client,
         f'{FRED_BASE}/series/vintagedates',
@@ -198,6 +230,25 @@ def compute_initial_and_latest_levels(df_wide: pl.DataFrame) -> pl.DataFrame:
 def _make_series_id(
     fips: str, abbrev: str, ces_code: str, nsa_suffix: Optional[str], adjusted: bool
 ) -> str:
+    '''Build the FRED/ALFRED series ID for a state x industry combination.
+
+    Two naming conventions exist on FRED:
+
+    - Short form (``{ABBREV}{SUFFIX}``) when *nsa_suffix* is not ``None``
+      -- typically domain and supersector series with ~222 vintages.
+    - Long form (``SMU{FIPS}00000{CES_CODE}01`` or ``SMS...``) --
+      typically sector-level series with ~139 vintages.
+
+    Args:
+        fips: Two-digit state FIPS code.
+        abbrev: Two-letter state abbreviation.
+        ces_code: Eight-digit CES industry code.
+        nsa_suffix: Short NSA suffix (e.g. ``"NAN"``) or ``None``.
+        adjusted: ``True`` for seasonally adjusted (SA) series.
+
+    Returns:
+        The FRED series ID string.
+    '''
     if nsa_suffix is not None:
         suffix = nsa_suffix[:-1] if adjusted else nsa_suffix
         return f'{abbrev}{suffix}'
@@ -206,28 +257,35 @@ def _make_series_id(
 
 
 def build_series_df() -> pl.DataFrame:
+    '''Build a DataFrame of all state x industry x adjustment series to fetch.
+
+    Returns:
+        DataFrame with columns ``series_id``, ``adjusted``,
+        ``geographic_type``, ``geographic_code``, ``state_fips``,
+        ``state_abbrev``, ``ces_industry``, ``industry_type``,
+        ``industry_code``, ``industry_name``.
+    '''
     rows = []
     for a in ['SA', 'NSA']:
         adjusted = a == 'SA'
         for fips, abbrev in FIPS_TO_ABBREV.items():
             for ces_code, code, name, level, nsa_suffix in INDUSTRIES:
-                if code == '00':
-                    rows.append(
-                        {
-                            'series_id': _make_series_id(
-                                fips, abbrev, ces_code, nsa_suffix, adjusted
-                            ),
-                            'adjusted': adjusted,
-                            'geographic_type': 'state',
-                            'geographic_code': fips,
-                            'state_fips': fips,
-                            'state_abbrev': abbrev,
-                            'ces_industry': ces_code,
-                            'industry_type': level,
-                            'industry_code': code,
-                            'industry_name': name,
-                        }
-                    )
+                rows.append(
+                    {
+                        'series_id': _make_series_id(
+                            fips, abbrev, ces_code, nsa_suffix, adjusted
+                        ),
+                        'adjusted': adjusted,
+                        'geographic_type': 'state',
+                        'geographic_code': fips,
+                        'state_fips': fips,
+                        'state_abbrev': abbrev,
+                        'ces_industry': ces_code,
+                        'industry_type': level,
+                        'industry_code': code,
+                        'industry_name': name,
+                    }
+                )
     return pl.DataFrame(rows)
 
 
@@ -357,6 +415,11 @@ def _split_revisions(
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    '''Fetch all SAE series from ALFRED, process, and write Parquet.
+
+    Requires ``FRED_API_KEY`` in the environment.  Writes
+    ``data/sae_revisions.parquet`` with the standard revision schema.
+    '''
     fred_api_key = os.environ.get('FRED_API_KEY', '')
     if not fred_api_key:
         raise RuntimeError('FRED_API_KEY environment variable is required')

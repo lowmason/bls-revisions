@@ -1,4 +1,9 @@
-'''CLI entry point: download BLS releases, build release_dates and vintage_dates.'''
+'''CLI entry point for the release-dates pipeline.
+
+Downloads all BLS release HTML files for each configured publication,
+parses them to extract vintage dates, and writes the
+``release_dates.parquet`` and ``vintage_dates.parquet`` datasets.
+'''
 
 import asyncio
 from pathlib import Path

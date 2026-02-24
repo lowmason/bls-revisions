@@ -1,4 +1,17 @@
-'''Publication definitions and paths.'''
+'''Publication definitions and shared path constants.
+
+All paths are relative to the current working directory (the repository
+root at runtime).
+
+Attributes:
+    BASE_URL: Root URL for bls.gov (used to resolve relative links).
+    DATA_DIR: Directory where downloaded release HTML files are stored,
+        organised by publication name (e.g. ``data/releases/ces/``).
+    PARQUET_PATH: Output path for ``release_dates.parquet``.
+    VINTAGE_DATES_PATH: Output path for ``vintage_dates.parquet``.
+    START_YEAR: Earliest year to scrape (2010).
+    PUBLICATIONS: List of :class:`Publication` definitions.
+'''
 
 from dataclasses import dataclass
 from pathlib import Path

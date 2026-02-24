@@ -1,4 +1,13 @@
-'''Download QCEW revisions CSV (2017-present) to ./data/qcew/.'''
+'''Download the QCEW revisions CSV (2017-present) from BLS.
+
+The QCEW publishes a single CSV at :data:`QCEW_CSV_URL` containing
+initial and revised employment counts by state and quarter.  This
+module saves it to ``data/qcew/qcew-revisions.csv``.
+
+Attributes:
+    QCEW_CSV_URL: Direct URL to the CSV file on bls.gov.
+    QCEW_FILENAME: Local filename used when saving the download.
+'''
 
 from __future__ import annotations
 
@@ -17,7 +26,13 @@ def download_qcew(
     *,
     client: httpx.Client | None = None,
 ) -> None:
-    '''Download the single QCEW revisions CSV to data/qcew/qcew-revisions.csv.'''
+    '''Download the QCEW revisions CSV to ``data/qcew/qcew-revisions.csv``.
+
+    Args:
+        data_dir: Root data directory.  Defaults to ``./data``.
+        client: Optional pre-built :class:`httpx.Client`.  A new client
+            is created (and closed on exit) if not provided.
+    '''
     base = data_dir or Path.cwd() / 'data'
     qcew_dir = base / 'qcew'
     qcew_dir.mkdir(parents=True, exist_ok=True)

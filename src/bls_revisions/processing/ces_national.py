@@ -1,4 +1,22 @@
-'''Process downloaded CES triangular revision files into a clean parquet file.'''
+'''Process CES triangular-revision CSVs into ``ces_revisions.parquet``.
+
+BLS publishes CES employment estimates in a triangular-revision format:
+each CSV file has rows indexed by *(year, month)* representing the
+reference period and columns ``Jan_10``, ``Feb_10``, ... representing
+the vintage (publication month).  The diagonal of this matrix gives the
+initial estimate; the first sub-diagonal gives the first revision, etc.
+
+This module reads every ``tri_{code}_{SA|NSA}.csv`` file from the
+``cesvinall/`` directory, extracts the initial and revised diagonals
+(revisions 0, 1, 2), joins vintage dates from ``vintage_dates.parquet``,
+and writes the result to ``data/ces_revisions.parquet``.
+
+Attributes:
+    CES_DIR: Path to the extracted ``cesvinall/`` directory.
+    CES_DOMAIN: Industry tuples at the domain aggregation level.
+    CES_SUPERSECTOR: Industry tuples at the supersector level.
+    CES_SECTOR: Industry tuples at the sector level.
+'''
 
 from __future__ import annotations
 
@@ -62,7 +80,17 @@ CES_SECTOR = [
 
 
 def _build_schema(path: Path) -> tuple[dict[str, pl.DataType], list[str], dict[str, str]]:
-    '''Build the column schema, selection list, and rename mapping from a sample file.'''
+    '''Build Polars read-schema, column selection, and rename map.
+
+    Inspects a sample CES CSV to discover all ``Mon_YY`` vintage columns
+    and maps them to ``emp_{YYYY}_{M}`` names.
+
+    Args:
+        path: Directory containing the triangular CSV files.
+
+    Returns:
+        A 3-tuple of *(schema, selected_columns, rename_mapping)*.
+    '''
     rows = pl.read_csv(path / 'tri_050000_SA.csv')
     columns = rows.columns
 
@@ -95,6 +123,23 @@ def read_triangular_ces(
     selected: list[str],
     renamed: dict[str, str],
 ) -> pl.DataFrame:
+    '''Read one triangular CSV and extract the k=0,1,2 revision diagonals.
+
+    Args:
+        path: Directory containing the CSV files.
+        file: Stem of the CSV file (without ``.csv``).
+        industry_type: Geographic/industry level label (e.g. ``"domain"``).
+        industry_code: Two-digit industry code (e.g. ``"00"``).
+        schema: Column-type overrides for :func:`polars.read_csv`.
+        selected: Ordered column names to select after reading.
+        renamed: Mapping from ``Mon_YY`` names to ``emp_YYYY_M`` names.
+
+    Returns:
+        A tidy DataFrame with columns ``ref_date``, ``ref_year``,
+        ``ref_month``, ``revision``, ``geographic_type``,
+        ``geographic_code``, ``industry_type``, ``industry_code``,
+        and ``employment``.
+    '''
     tri_df = (
         pl.read_csv(f'{path}/{file}.csv', schema_overrides=schema)
         .select(selected)
@@ -160,6 +205,13 @@ def read_triangular_ces(
 
 
 def main() -> None:
+    '''Read all CES triangular CSVs, join vintage dates, and write Parquet.
+
+    Writes ``data/ces_revisions.parquet`` with columns: ``source``,
+    ``seasonally_adjusted``, ``geographic_type``, ``geographic_code``,
+    ``industry_type``, ``industry_code``, ``ref_date``, ``vintage_date``,
+    ``revision``, ``benchmark_revision``, ``employment``.
+    '''
     ces_files = {p.stem for p in CES_DIR.iterdir()}
     print(f'Number of CES files: {len(ces_files)}')
 

@@ -1,4 +1,14 @@
-'''Process downloaded QCEW revision data into a clean parquet file.'''
+'''Process the QCEW revisions CSV into ``qcew_revisions.parquet``.
+
+The raw CSV (downloaded by :mod:`bls_revisions.download.qcew`) has columns
+for the initial value and up to four revised values per state x quarter x
+month.  This module:
+
+1. Filters to employment rows and maps area names to FIPS codes.
+2. Unpivots the revision columns into a tidy long format.
+3. Joins vintage dates from ``vintage_dates.parquet``.
+4. Writes ``data/qcew_revisions.parquet``.
+'''
 
 from __future__ import annotations
 
@@ -9,6 +19,10 @@ from bls_revisions.release_dates.config import VINTAGE_DATES_PATH
 
 
 def main() -> None:
+    '''Read the QCEW revisions CSV, reshape, join vintage dates, and write Parquet.
+
+    Writes ``data/qcew_revisions.parquet`` with the standard revision schema.
+    '''
     geos = (
         pl.read_csv(
             DATA_DIR / 'reference' / 'geographic_codes.csv',

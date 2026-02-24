@@ -1,11 +1,21 @@
-'''Extract release (vintage) date from downloaded BLS release HTML files.'''
+'''Extract release (vintage) dates from downloaded BLS release HTML files.
+
+Each BLS news release contains an embargo line near the top of the page
+reading something like *"... until 8:30 A.M. (ET) Friday, April 2,
+2010"*.  The :data:`VINTAGE_DATE_RE` regex captures the date portion,
+and :func:`parse_vintage_date` converts it to a :class:`~datetime.date`.
+
+Attributes:
+    VINTAGE_DATE_RE: Compiled regex matching the embargo-line date.
+    MONTH_NAMES: Ordered list of English month names.
+    MONTH_TO_NUM: Mapping from month name to 1-based integer.
+'''
 
 import re
 from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 
-# Embargo line contains: 'until ... Friday, April 2, 2010'
 VINTAGE_DATE_RE = re.compile(
     r'(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+'
     r'(January|February|March|April|May|June|July|August|'

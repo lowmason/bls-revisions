@@ -1,0 +1,115 @@
+site_name: bls-revisions
+site_description: BLS revisions — release date scraping, vintage downloads, and processing.
+site_url: https://lowmason.github.io/bls-revisions/
+repo_url: https://github.com/lowmason/bls-revisions
+repo_name: lowmason/bls-revisions
+
+theme:
+  name: material
+  palette:
+    - media: '(prefers-color-scheme: light)'
+      scheme: default
+      primary: indigo
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: '(prefers-color-scheme: dark)'
+      scheme: slate
+      primary: indigo
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - content.code.copy
+    - content.code.annotate
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            docstring_style: google
+            docstring_section_style: spacy
+            merge_init_into_class: true
+            show_if_no_docstring: false
+            signature_crossrefs: true
+            separate_signature: true
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Concepts:
+    - Architecture: concepts/architecture.md
+    - Data Model: concepts/data-model.md
+    - Revision Logic: concepts/revision-logic.md
+  - CLI Reference: cli.md
+  - API Reference:
+    - api/index.md
+    - Client: api/client.md
+    - Download:
+      - api/download/index.md
+      - CES: api/download/ces.md
+      - QCEW: api/download/qcew.md
+    - Release Dates:
+      - api/release-dates/index.md
+      - Config: api/release-dates/config.md
+      - Parser: api/release-dates/parser.md
+      - Scraper: api/release-dates/scraper.md
+      - Reader: api/release-dates/read.md
+      - Vintage Dates: api/release-dates/vintage-dates.md
+    - Processing:
+      - api/processing/index.md
+      - CES National: api/processing/ces-national.md
+      - CES States (SAE): api/processing/ces-states.md
+      - QCEW: api/processing/qcew.md
+      - Vintage Series: api/processing/vintage-series.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/lowmason/bls-revisions

@@ -1,4 +1,21 @@
-'''Shared constants for processing modules.'''
+'''Data processing pipelines for CES, SAE, and QCEW revisions.
+
+Each processing module reads raw downloaded files plus the
+``vintage_dates.parquet`` lookup, then produces a tidy Parquet dataset:
+
+- :mod:`~bls_revisions.processing.ces_national` -- CES triangular
+  revision matrices (national, all industries).
+- :mod:`~bls_revisions.processing.ces_states` -- SAE state-level
+  revisions fetched from the FRED/ALFRED API.
+- :mod:`~bls_revisions.processing.qcew` -- QCEW quarterly revisions.
+- :mod:`~bls_revisions.processing.vintage_series` -- combines all three
+  sources and aggregates to region / division geography.
+
+Attributes:
+    PROJECT_ROOT: Absolute path to the repository root.
+    DATA_DIR: Absolute path to the ``data/`` directory.
+    STATES: FIPS codes for all 50 US states, DC, and Puerto Rico.
+'''
 
 from pathlib import Path
 

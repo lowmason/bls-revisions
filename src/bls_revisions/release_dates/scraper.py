@@ -1,4 +1,15 @@
-'''Fetch BLS archive index pages and download release HTML files.'''
+'''Fetch BLS archive index pages and download individual release HTMLs.
+
+The BLS maintains an archive index page for each publication listing
+every past news release.  This module:
+
+1. Fetches the index page for a publication
+   (:func:`fetch_index`).
+2. Parses it to discover per-release archive links
+   (:func:`parse_index_page`).
+3. Downloads each release HTML file concurrently, skipping files that
+   already exist on disk (:func:`download_all`).
+'''
 
 import asyncio
 import re

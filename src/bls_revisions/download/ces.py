@@ -1,4 +1,15 @@
-'''Download CES vintage data from BLS to ./data/ces/.'''
+'''Download CES vintage (triangular revision) data from BLS.
+
+The CES vintage-data page at :data:`CES_INDEX_URL` links to:
+
+- ``cesvinall.zip`` -- a zip archive of CSV triangular-revision matrices
+  for every industry, extracted into ``data/ces/cesvinall/``.
+- Individual ``cesvin*.xlsx`` workbooks saved directly into ``data/ces/``.
+
+Attributes:
+    CES_INDEX_URL: BLS page listing CES vintage data files.
+    CES_BASE_URL: Base URL used to resolve relative links on that page.
+'''
 
 from __future__ import annotations
 
@@ -16,11 +27,12 @@ CES_BASE_URL = 'https://www.bls.gov/web/empsit/'
 
 
 def _resolve_url(href: str, base: str = CES_BASE_URL) -> str:
+    '''Join *href* against *base* to produce an absolute URL.'''
     return urljoin(base, href)
 
 
 def _discover_links(html: str) -> list[str]:
-    '''Collect cesvinall.zip and cesvin*.xlsx (and template) URLs from the CES page.'''
+    '''Collect ``cesvinall.zip`` and ``cesvin*.xlsx`` URLs from the CES page.'''
     soup = BeautifulSoup(html, 'html.parser')
     out: list[str] = []
     seen: set[str] = set()
@@ -48,9 +60,15 @@ def download_ces(
     *,
     client: httpx.Client | None = None,
 ) -> None:
-    '''
-    Scrape the CES vintage data page, download cesvinall.zip and all cesvin*.xlsx,
-    unzip the zip into data/ces/cesvinall/, and save xlsx into data/ces/.
+    '''Scrape the CES vintage-data page and download all linked files.
+
+    Downloads ``cesvinall.zip`` (extracted into ``data/ces/cesvinall/``)
+    and individual ``cesvin*.xlsx`` workbooks into ``data/ces/``.
+
+    Args:
+        data_dir: Root data directory.  Defaults to ``./data``.
+        client: Optional pre-built :class:`httpx.Client`.  A new client
+            is created (and closed on exit) if not provided.
     '''
     base = data_dir or Path.cwd() / 'data'
     ces_dir = base / 'ces'

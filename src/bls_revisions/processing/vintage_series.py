@@ -1,4 +1,18 @@
-'''Combine QCEW, CES, and SAE revision outputs into a single revisions dataset.'''
+'''Combine CES, SAE, and QCEW revision Parquets into ``revisions.parquet``.
+
+Reads the three source-specific Parquet files produced by
+:mod:`~bls_revisions.processing.ces_national`,
+:mod:`~bls_revisions.processing.ces_states`, and
+:mod:`~bls_revisions.processing.qcew`, vertically concatenates them,
+and adds **region** and **division** geographic aggregations (summing
+state-level employment).
+
+The final dataset is written to ``data/revisions.parquet``.
+
+Attributes:
+    GROUP_COLS: The set of columns that uniquely identify a row (used
+        for grouping and de-duplication checks).
+'''
 
 from __future__ import annotations
 
@@ -21,6 +35,15 @@ GROUP_COLS = [
 
 
 def _load_geo_lookups() -> tuple[dict[str, str], dict[str, str]]:
+    '''Load FIPS-to-region and FIPS-to-division lookup dicts.
+
+    Reads ``data/reference/geographic_codes.csv`` and returns two
+    dictionaries mapping state FIPS codes to Census region and division
+    codes respectively.
+
+    Returns:
+        A 2-tuple of *(region_dict, division_dict)*.
+    '''
     geo_codes = (
         pl.read_csv(
             DATA_DIR / 'reference' / 'geographic_codes.csv',
