@@ -14,6 +14,10 @@ Running without arguments executes all three stages in order.
 
 import sys
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 def cmd_release() -> None:
     '''Scrape BLS news releases and build ``release_dates`` + ``vintage_dates`` Parquets.'''
