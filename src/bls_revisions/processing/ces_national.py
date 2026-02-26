@@ -93,11 +93,12 @@ def _build_schema(path: Path) -> tuple[dict[str, pl.DataType], list[str], dict[s
     '''
     rows = pl.read_csv(path / 'tri_050000_SA.csv')
     columns = rows.columns
+    available = set(columns)
 
     schema: dict[str, pl.DataType] = {'year': pl.UInt16, 'month': pl.UInt8}
     schema.update({col: pl.Float64 for col in columns if col not in schema})
 
-    years = list(range(2010, 2025))
+    years = list(range(2010, 2030))
     month_names = [
         'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
         'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
@@ -108,8 +109,10 @@ def _build_schema(path: Path) -> tuple[dict[str, pl.DataType], list[str], dict[s
     for yr in years:
         for m, mo in enumerate(month_names):
             y = str(yr)[2:]
-            selected.append(f'{mo}_{y}')
-            renamed[f'{mo}_{y}'] = f'emp_{yr}_{m + 1}'
+            col_name = f'{mo}_{y}'
+            if col_name in available:
+                selected.append(col_name)
+                renamed[col_name] = f'emp_{yr}_{m + 1}'
 
     return schema, selected, renamed
 
@@ -149,7 +152,7 @@ def read_triangular_ces(
             ref_year=pl.col('year'),
             ref_month=pl.col('month'),
         )
-        .filter(pl.col('ref_date').gt(pl.date(2015, 12, 12)))
+        .filter(pl.col('ref_date').gt(pl.date(2009, 12, 12)))
         .select(cs.starts_with('ref_'), cs.starts_with('emp_'))
     )
 
@@ -157,18 +160,25 @@ def read_triangular_ces(
     n_cols = len(emp_cols)
     n_rows = len(tri_df)
 
+    first_row_year = int(tri_df[0, 'ref_year'])
+    first_row_month = int(tri_df[0, 'ref_month'])
+    first_col_parts = emp_cols[0].split('_')
+    first_col_year, first_col_month = int(first_col_parts[1]), int(first_col_parts[2])
+    col_offset = (first_row_year - first_col_year) * 12 + (first_row_month - first_col_month)
+
     revisions = []
     for k in range(3):
-        n = min(n_cols, n_rows - k)
+        n = min(n_cols - col_offset, n_rows - k)
         col_years: list[int] = []
         col_months: list[int] = []
         diag_values: list[float | None] = []
 
         for j in range(n):
-            parts = emp_cols[j].split('_')
+            ci = j + col_offset
+            parts = emp_cols[ci].split('_')
             col_years.append(int(parts[1]))
             col_months.append(int(parts[2]))
-            diag_values.append(tri_df[j + k, emp_cols[j]])
+            diag_values.append(tri_df[j + k, emp_cols[ci]])
 
         revisions.append(
             pl.DataFrame(
