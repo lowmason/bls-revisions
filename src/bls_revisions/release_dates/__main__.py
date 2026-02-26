@@ -13,7 +13,11 @@ import polars as pl
 from .config import DATA_DIR, PARQUET_PATH, PUBLICATIONS
 from .parser import collect_release_dates
 from .scraper import download_all, fetch_index, parse_index_page
-from .vintage_dates import build_vintage_dates, VINTAGE_DATES_PATH
+from .vintage_dates import (
+    SUPPLEMENTAL_RELEASE_DATES,
+    build_vintage_dates,
+    VINTAGE_DATES_PATH,
+)
 
 import httpx
 
@@ -45,8 +49,22 @@ def build_dataframe() -> pl.DataFrame:
     df = pl.DataFrame(
         rows, schema={'publication': pl.Utf8, 'ref_date': pl.Date, 'vintage_date': pl.Date},
         orient='row',
-    ).sort('publication', 'ref_date')
-    return df
+    )
+    # Merge supplemental release dates for ranges sometimes missing from scraped HTML
+    supplemental = pl.DataFrame(
+        [
+            {'publication': p, 'ref_date': ref, 'vintage_date': vint}
+            for p, ref, vint in SUPPLEMENTAL_RELEASE_DATES
+        ],
+        schema={'publication': pl.Utf8, 'ref_date': pl.Date, 'vintage_date': pl.Date},
+    )
+    existing_keys = df.select('publication', 'ref_date').unique()
+    supplemental = supplemental.join(
+        existing_keys, on=['publication', 'ref_date'], how='anti'
+    )
+    if supplemental.height > 0:
+        df = pl.concat([df, supplemental])
+    return df.sort('publication', 'ref_date')
 
 
 def main() -> None:

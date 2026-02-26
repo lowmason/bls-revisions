@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 from typing import Iterable, List, Optional
 
 import httpx
@@ -32,6 +33,8 @@ import polars as pl
 
 from bls_revisions.processing import DATA_DIR
 from bls_revisions.release_dates.config import VINTAGE_DATES_PATH
+
+CHECKPOINT_PATH = DATA_DIR / 'sae_checkpoint.parquet'
 
 FRED_BASE = 'https://api.stlouisfed.org/fred'
 
@@ -109,9 +112,16 @@ def _request_with_retry(
     timeout: float = 30.0,
     max_retries: int = 6,
 ) -> httpx.Response:
-    '''GET with exponential backoff on 429 and transient 5xx errors.'''
+    '''GET with exponential backoff on 429, transient 5xx, and timeouts.'''
     for attempt in range(max_retries):
-        r = client.get(url, params=params, timeout=timeout)
+        try:
+            r = client.get(url, params=params, timeout=timeout)
+        except (httpx.TimeoutException, httpx.RemoteProtocolError, httpx.NetworkError) as exc:
+            wait = min(2**attempt, 60)
+            label = type(exc).__name__
+            print(f'    [{label}] retrying in {wait}s ...')
+            time.sleep(wait)
+            continue
         if r.status_code == 429 or r.status_code >= 500:
             wait = min(2**attempt, 60)
             print(f'    [{r.status_code}] retrying in {wait}s ...')
@@ -293,6 +303,14 @@ def build_series_df() -> pl.DataFrame:
 # Batch download
 # ---------------------------------------------------------------------------
 
+def _save_checkpoint(results: list[pl.DataFrame], path: Path) -> None:
+    '''Write intermediate results to a Parquet checkpoint file.'''
+    if not results:
+        return
+    pl.concat(results, how='vertical_relaxed').write_parquet(path)
+    print(f'  ** checkpoint saved ({len(results)} series) -> {path}')
+
+
 def fetch_batch_sae_revisions(
     series_df: pl.DataFrame,
     fred_api_key: str,
@@ -300,18 +318,36 @@ def fetch_batch_sae_revisions(
     chunk_size: int = 200,
     sleep_between: float = 1.0,
     observation_start: Optional[str] = None,
+    checkpoint_every: int = 100,
+    checkpoint_path: Path = CHECKPOINT_PATH,
 ) -> pl.DataFrame:
     '''Fetch initial-vs-latest levels for every series in *series_df*.
 
     Series that don't exist on FRED (HTTP 400/404) are silently skipped.
+    Intermediate results are checkpointed to *checkpoint_path* every
+    *checkpoint_every* successfully fetched series, and on any unhandled
+    exception.  On re-run, series already present in the checkpoint are
+    skipped automatically.
     '''
     results: list[pl.DataFrame] = []
     skipped: list[str] = []
+    done_ids: set[str] = set()
+
+    if checkpoint_path.exists():
+        prev = pl.read_parquet(checkpoint_path)
+        if prev.height > 0:
+            done_ids = set(prev['series_id'].unique().to_list())
+            results.append(prev)
+            print(f'  Resumed from checkpoint: {len(done_ids)} series already fetched')
+
     total = len(series_df)
+    fetched_this_run = 0
 
     with httpx.Client() as client:
         for i, row in enumerate(series_df.iter_rows(named=True)):
             sid = row['series_id']
+            if sid in done_ids:
+                continue
             try:
                 vdates = get_vintage_dates(client, series_id=sid, api_key=fred_api_key)
                 if last_n_vintages is not None:
@@ -343,6 +379,10 @@ def fetch_batch_sae_revisions(
                         pl.lit(row['industry_code']).alias('industry_code'),
                     )
                     results.append(levels)
+                    fetched_this_run += 1
+
+                if fetched_this_run > 0 and fetched_this_run % checkpoint_every == 0:
+                    _save_checkpoint(results, checkpoint_path)
 
                 if (i + 1) % 25 == 0:
                     print(
@@ -354,13 +394,21 @@ def fetch_batch_sae_revisions(
                 if e.response.status_code in (400, 404):
                     skipped.append(sid)
                 else:
+                    _save_checkpoint(results, checkpoint_path)
                     raise
+
+            except Exception:
+                _save_checkpoint(results, checkpoint_path)
+                raise
 
             time.sleep(sleep_between)
 
     print(f'\nDone: {len(results)} series fetched, {len(skipped)} not found on FRED')
     if skipped:
         print(f'  Skipped (first 20): {skipped[:20]}')
+
+    if checkpoint_path.exists():
+        checkpoint_path.unlink()
 
     if not results:
         return pl.DataFrame()
@@ -507,3 +555,4 @@ def main() -> None:
 
 if __name__ == '__main__':
     main()
+

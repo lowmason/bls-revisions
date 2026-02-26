@@ -28,6 +28,16 @@ from .config import PARQUET_PATH, VINTAGE_DATES_PATH
 # Publication-specific revision sets (monthly-style; 9 added separately for CES/SAE).
 CES_MONTHLY_REVISIONS = [0, 1, 2]
 SAE_MONTHLY_REVISIONS = [0, 1]
+
+# Supplemental release dates for ranges sometimes missing from scraped HTML
+# (e.g. CES and SAE Jan–Mar 2016). Merged into release_dates in build_vintage_dates.
+SUPPLEMENTAL_RELEASE_DATES = [
+    ('ces', date(2016, 1, 12), date(2016, 2, 5)),
+    ('ces', date(2016, 2, 12), date(2016, 3, 4)),
+    ('sae', date(2016, 1, 12), date(2016, 3, 14)),
+    ('sae', date(2016, 2, 12), date(2016, 3, 25)),
+    ('sae', date(2016, 3, 12), date(2016, 4, 15)),
+]
 # QCEW max revision by quarter (ref_date month): Q1=4, Q2=3, Q3=2, Q4=1
 
 
@@ -237,6 +247,21 @@ def build_vintage_dates(release_dates_path: Path | None = None) -> pl.DataFrame:
     '''
     path = release_dates_path or PARQUET_PATH
     df = pl.read_parquet(path)
+
+    # Merge supplemental release dates for ranges sometimes missing from scraped data
+    supplemental = pl.DataFrame(
+        [
+            {'publication': p, 'ref_date': ref, 'vintage_date': vint}
+            for p, ref, vint in SUPPLEMENTAL_RELEASE_DATES
+        ],
+        schema={'publication': pl.Utf8, 'ref_date': pl.Date, 'vintage_date': pl.Date},
+    )
+    existing_keys = df.select('publication', 'ref_date').unique()
+    supplemental = supplemental.join(
+        existing_keys, on=['publication', 'ref_date'], how='anti'
+    )
+    if supplemental.height > 0:
+        df = pl.concat([df, supplemental]).unique(subset=['publication', 'ref_date'])
 
     # Publication-specific revisions: CES 0,1,2; SAE 0,1; QCEW 0..max by quarter
     with_revisions = pl.concat([
