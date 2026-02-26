@@ -1,19 +1,16 @@
 '''Build vintage_dates dataset from release_dates.parquet with revision codes.
 
-Revision semantics (publication-specific; may not hold for most recent ref_dates):
+Revision semantics (publication-specific):
 
-- 0: initial release (vintage_date from release_dates.parquet)
-- 1, 2, ...: subsequent revisions (vintage_date shifted by 1, 2, ... months)
-- 9: benchmark revision (CES and SAE only)
-
-benchmark_revision: 0 = not a benchmark row; 1 = first benchmark; 2 = second
-benchmark (SAE re-replacement only).
-
-- **CES:** revisions 0, 1, 2, and 9. Benchmark 9 only for March ref_date
-  (vintage = Jan release next year); benchmark_revision=1.
-- **SAE:** revisions 0, 1, and 9. Benchmark 9 twice for April-September ref_dates
-  (double-revision): first at March Y+1 (benchmark_revision=1), second at
-  March Y+2 (benchmark_revision=2).
+- revision: 0 = initial release; 1 = first revision (1 month later); 2 = second
+  revision (2 months later) for CES. SAE has only 0 and 1. Never 9.
+- benchmark_revision: 0 = not benchmarked. When Jan Y+1 is published (Feb),
+  all year Y months get benchmark_revision=1 for CES. SAE: two benchmarks
+  (1 and 2), same idea.
+- **CES:** 0, 1, 2 + benchmark rows (revision=2, benchmark_revision=1) for
+  all months of each benchmarked year.
+- **SAE:** 0, 1 + benchmark rows (revision=1, benchmark_revision=1 or 2) for
+  all months.
 - **QCEW:** by quarter of ref_date - Q1: 0,1,2,3,4; Q2: 0,1,2,3; Q3: 0,1,2;
   Q4: 0,1. No benchmarks (benchmark_revision=0).
 '''
@@ -25,7 +22,7 @@ import polars as pl
 
 from .config import PARQUET_PATH, VINTAGE_DATES_PATH
 
-# Publication-specific revision sets (monthly-style; 9 added separately for CES/SAE).
+# Publication-specific revision sets (benchmark rows reuse the max revision with benchmark_revision>0).
 CES_MONTHLY_REVISIONS = [0, 1, 2]
 SAE_MONTHLY_REVISIONS = [0, 1]
 
@@ -42,14 +39,7 @@ SUPPLEMENTAL_RELEASE_DATES = [
 
 
 def _add_ces_revisions(df: pl.DataFrame) -> pl.DataFrame:
-    '''Add CES revisions 0, 1, 2 (benchmark 9 added separately for March).
-
-    Args:
-        df: Release dates DataFrame with publication, ref_date, vintage_date.
-
-    Returns:
-        DataFrame with CES rows expanded into revision 0, 1, 2; benchmark_revision=0.
-    '''
+    '''Add CES revisions 0, 1, 2 (benchmark rows added separately).'''
     parts = []
     for n in CES_MONTHLY_REVISIONS:
         if n == 0:
@@ -71,14 +61,7 @@ def _add_ces_revisions(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def _add_sae_revisions(df: pl.DataFrame) -> pl.DataFrame:
-    '''Add SAE revisions 0, 1 (benchmark 9 added separately for Apr-Sep).
-
-    Args:
-        df: Release dates DataFrame with publication, ref_date, vintage_date.
-
-    Returns:
-        DataFrame with SAE rows expanded into revision 0, 1; benchmark_revision=0.
-    '''
+    '''Add SAE revisions 0, 1 (benchmark rows added separately).'''
     parts = []
     for n in SAE_MONTHLY_REVISIONS:
         if n == 0:
@@ -135,7 +118,7 @@ def _add_qcew_revisions(df: pl.DataFrame) -> pl.DataFrame:
             subset = qcew.filter(pl.col('max_rev') >= n)
             parts.append(
                 subset.with_columns(
-                    pl.col('vintage_date').dt.offset_by(f'{n}mo').alias('vintage_date'),
+                    pl.col('vintage_date').dt.offset_by(f'{n * 3}mo').alias('vintage_date'),
                     pl.lit(n).alias('revision'),
                     pl.lit(0).alias('benchmark_revision'),
                 ).select('publication', 'ref_date', 'vintage_date', 'revision', 'benchmark_revision')
@@ -144,64 +127,55 @@ def _add_qcew_revisions(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def _ces_benchmark_vintage_dates(release_df: pl.DataFrame) -> pl.DataFrame:
-    '''Add CES benchmark rows: March ref_date -> benchmark at Jan Y+1 vintage.
+    '''When Jan Y+1 is published, all year Y ref_dates get benchmark_revision=1.
 
     Args:
         release_df: Release dates DataFrame (publication, ref_date, vintage_date).
 
     Returns:
-        DataFrame of CES benchmark rows (revision=9, benchmark_revision=1).
+        DataFrame of CES benchmark rows (revision=max, benchmark_revision=1).
     '''
     ces = release_df.filter(pl.col('publication') == 'ces')
     jan_releases = ces.filter(pl.col('ref_date').dt.month() == 1).select(
-        pl.col('ref_date').dt.year().alias('year'),
+        pl.col('ref_date').dt.year().alias('benchmark_year'),
         pl.col('vintage_date').alias('benchmark_vintage'),
-    )
-    # ref_date March Y -> benchmark_vintage from January Y+1
-    march_refs = ces.filter(pl.col('ref_date').dt.month() == 3).select(
-        'publication', 'ref_date',
+    ).unique()
+    ces_refs = ces.select('publication', 'ref_date').unique().with_columns(
         (pl.col('ref_date').dt.year() + 1).alias('benchmark_year'),
     )
-    joined = march_refs.join(
+    return ces_refs.join(
         jan_releases,
-        left_on='benchmark_year',
-        right_on='year',
+        on='benchmark_year',
         how='inner',
-    )
-    return joined.select(
+    ).select(
         pl.col('publication'),
         pl.col('ref_date'),
         pl.col('benchmark_vintage').alias('vintage_date'),
-        pl.lit(9).alias('revision'),
+        pl.lit(max(CES_MONTHLY_REVISIONS)).alias('revision'),
         pl.lit(1).alias('benchmark_revision'),
     )
 
 
 def _sae_benchmark_vintage_dates(release_df: pl.DataFrame) -> pl.DataFrame:
-    '''Add SAE benchmark rows: April-September ref_date -> two benchmarks.
+    '''Two benchmarks per ref_date: benchmark_revision=1 (March Y+1) and 2 (March Y+2).
 
-    First benchmark at March Y+1 (benchmark_revision=1), second at March Y+2
-    (benchmark_revision=2, re-replacement).
+    Applies to all SAE months. Never uses revision=9.
 
     Args:
         release_df: Release dates DataFrame (publication, ref_date, vintage_date).
 
     Returns:
-        DataFrame of SAE benchmark rows (revision=9, benchmark_revision 1 or 2).
+        DataFrame of SAE benchmark rows (revision=max, benchmark_revision 1 or 2).
     '''
     sae = release_df.filter(pl.col('publication') == 'sae')
     march_releases = sae.filter(pl.col('ref_date').dt.month() == 3).select(
         pl.col('ref_date').dt.year().alias('year'),
         pl.col('vintage_date').alias('benchmark_vintage'),
     )
-    apr_sep = sae.filter(
-        pl.col('ref_date').dt.month().is_between(4, 9)
-    ).select(
-        'publication', 'ref_date',
+    sae_refs = sae.select('publication', 'ref_date').unique().with_columns(
         pl.col('ref_date').dt.year().alias('ref_year'),
     )
-    # First benchmark: March Y+1 (benchmark_revision=1)
-    first = apr_sep.with_columns((pl.col('ref_year') + 1).alias('benchmark_year')).join(
+    first = sae_refs.with_columns((pl.col('ref_year') + 1).alias('benchmark_year')).join(
         march_releases,
         left_on='benchmark_year',
         right_on='year',
@@ -210,11 +184,10 @@ def _sae_benchmark_vintage_dates(release_df: pl.DataFrame) -> pl.DataFrame:
         pl.col('publication'),
         pl.col('ref_date'),
         pl.col('benchmark_vintage').alias('vintage_date'),
-        pl.lit(9).alias('revision'),
+        pl.lit(max(SAE_MONTHLY_REVISIONS)).alias('revision'),
         pl.lit(1).alias('benchmark_revision'),
     )
-    # Second benchmark (re-replacement): March Y+2 (benchmark_revision=2)
-    second = apr_sep.with_columns((pl.col('ref_year') + 2).alias('benchmark_year')).join(
+    second = sae_refs.with_columns((pl.col('ref_year') + 2).alias('benchmark_year')).join(
         march_releases,
         left_on='benchmark_year',
         right_on='year',
@@ -223,7 +196,7 @@ def _sae_benchmark_vintage_dates(release_df: pl.DataFrame) -> pl.DataFrame:
         pl.col('publication'),
         pl.col('ref_date'),
         pl.col('benchmark_vintage').alias('vintage_date'),
-        pl.lit(9).alias('revision'),
+        pl.lit(max(SAE_MONTHLY_REVISIONS)).alias('revision'),
         pl.lit(2).alias('benchmark_revision'),
     )
     return pl.concat([first, second])
@@ -270,7 +243,7 @@ def build_vintage_dates(release_dates_path: Path | None = None) -> pl.DataFrame:
         _add_qcew_revisions(df),
     ])
 
-    # Benchmark revisions (CES March, SAE Apr-Sep only)
+    # Benchmark revisions (CES all months, SAE all months)
     ces_bench = _ces_benchmark_vintage_dates(df)
     sae_bench = _sae_benchmark_vintage_dates(df)
     benchmark_rows = pl.concat([ces_bench, sae_bench])
